@@ -50,3 +50,21 @@ void charbuf_free(struct CharBuf *cb) {
     free(cb->buf);
     free(cb);
 }
+
+int charbuf_revstrcmp(struct CharBuf *a, struct CharBuf *b) {
+    int min;
+
+    if (a->len < b->len) {
+	min = a->len;
+    } else {
+	min = b->len;
+    }
+
+    for (; min >= 0; --min) {
+	if (a->buf[min] != b->buf[min]) {
+	    return a->buf[min] - b->buf[min];
+	}
+    }
+
+    return 0;
+}

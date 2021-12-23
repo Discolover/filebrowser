@@ -15,6 +15,13 @@
 
 FILE *LOG;
 
+char *sort_method_to_str[SORT_METHODS_NMEMB] = {
+    "SORT_ALPHA_ASC",
+    "SORT_ALPHA_DESC",
+    "SORT_SIZE_ASC",
+    "SORT_SIZE_DESC"
+};
+
 void init() {
     LOG = fopen("log", "w");
     setlocale(LC_ALL, "");
@@ -52,6 +59,30 @@ void get_input(wchar_t *buf, size_t n) {
 	tb_present();
     }
     *p = '\0';
+}
+
+int get_sort_method() {
+    struct tb_event ev;
+    int sort_method = -1;
+
+    if (tb_poll_event(&ev) == TB_EVENT_KEY) {
+	switch (ev.ch) {
+	case 'a':
+	    sort_method = SORT_ALPHA_ASC;
+	    break;
+	case 'A':
+	    sort_method = SORT_ALPHA_DESC;
+	    break;
+	case 's':
+	    sort_method = SORT_SIZE_ASC;
+	    break;
+	case 'S':
+	    sort_method = SORT_SIZE_DESC;
+	    break;
+	}
+    }
+
+    return sort_method;
 }
 
 int main() {
@@ -133,6 +164,23 @@ int main() {
 	    case 'z':
 		// trick to center relative to the cursor(current entry)
 		panel_set_cursor(main, panel_get_cursor(main));
+		break;
+	    case 's':
+		int sm = get_sort_method();
+		if (sm > -1) {
+		    panel_set_sort_method(left, sm);
+		    panel_set_sort_method(main, sm);
+		    panel_set_sort_method(right, sm);
+
+		    strcpy(buf, panel_get_path(left));
+		    panel_set_path(left, buf);
+
+		    strcpy(buf, panel_get_path(main));
+		    panel_set_path(main, buf);
+
+		    strcpy(buf, panel_get_path(right));
+		    panel_set_path(right, buf);
+		}
 		break;
 	    case 'D':
 		panel_delete_marked();

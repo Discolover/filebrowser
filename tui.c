@@ -24,7 +24,18 @@
 extern FILE *LOG;
 
 static void draw_file(struct Panel *pnl), draw_directory(struct Panel *pnl);
-static int alpha(const void *a, const void *b);
+
+static int alpha_asc(const void *a, const void *b);
+static int alpha_desc(const void *a, const void *b);
+static int size_asc(const void *a, const void *b);
+static int size_desc(const void *a, const void *b);
+
+static int (*sort[SORT_METHODS_NMEMB]) (const void *, const void *) = {
+    alpha_asc,
+    alpha_desc,
+    size_asc,
+    size_desc
+};
 
 static int key_cmp(void *key1, void *key2);
 static void key_free(void *key);
@@ -45,6 +56,8 @@ struct Panel {
     int height, width, y, x;
     DIR *dir;
 
+    int sort_method;
+
     struct Entry *entries;
     int n;
 
@@ -56,6 +69,42 @@ struct Panel {
     // void *draw_data; // @todo: consider generic like pointer as data to draw_fnc
     void (*draw_fnc)(struct Panel *pnl);
 };
+
+static int alpha_asc(const void *a, const void *b) {
+    const struct Entry *e1 = a, *e2 = b;
+
+    return strcmp(e1->name->buf, e2->name->buf);
+}
+
+static int alpha_desc(const void *a, const void *b) {
+    const struct Entry *e1 = a, *e2 = b;
+
+    return strcmp(e2->name->buf, e1->name->buf);
+}
+
+static int size_asc(const void *a, const void *b) {
+    const struct Entry *e1 = a, *e2 = b;
+
+    if (e1->st.st_size > e2->st.st_size) {
+	return 1;
+    } else if (e1->st.st_size == e2->st.st_size) {
+	return 0;
+    } else {
+	return -1;
+    }
+}
+
+static int size_desc(const void *a, const void *b) {
+    const struct Entry *e1 = a, *e2 = b;
+
+    if (e1->st.st_size > e2->st.st_size) {
+	return -1;
+    } else if (e1->st.st_size == e2->st.st_size) {
+	return 0;
+    } else {
+	return 1;
+    }
+}
 
 int mvprint(int x, int y, char *mbs, int width, struct tb_cell meta) {
     wchar_t wc;
@@ -101,11 +150,16 @@ struct Panel *panel_new(float fx, int y, float fwidth, int height,
     pnl->fx = fx;
     pnl->y = y;
     pnl->fwidth = fwidth;
+    pnl->sort_method = SORT_ALPHA_ASC;
     //pnl->height = height;
 
     panel_resize(pnl);
 
     return pnl;
+}
+
+void panel_set_sort_method(struct Panel *pnl, int sort_method) {
+    pnl->sort_method = sort_method;
 }
 
 void panel_set_path(struct Panel *pnl, char *path) {
@@ -187,7 +241,8 @@ void panel_set_path(struct Panel *pnl, char *path) {
 	    eprintf("Fail reading directory `%s`:", pnl->path);
 	}
 
-	qsort(pnl->entries, pnl->n, sizeof(*pnl->entries), alpha);
+	qsort(pnl->entries, pnl->n, sizeof(*pnl->entries),
+	      sort[pnl->sort_method]);
 
 	pnl->draw_fnc = draw_directory;
 	pnl->search = realloc(pnl->search, sizeof(*pnl->search) * pnl->n);
@@ -257,16 +312,6 @@ char *panel_get_path(struct Panel *pnl) {
 
 void panel_draw(struct Panel *pnl) {
     pnl->draw_fnc(pnl);
-}
-
-static int alpha(const void *a, const void *b) {
-    const struct Entry *e1 = a, *e2 = b;
-
-    return strcmp(e1->name->buf, e2->name->buf);
-}
-
-void panel_sort_entries(struct Panel *pnl) {
-    qsort(pnl->entries, pnl->n, sizeof(*pnl->entries), alpha);
 }
 
 static void draw_directory(struct Panel *pnl) {
@@ -377,39 +422,15 @@ int panel_search_prev(struct Panel *pnl) {
 }
 
 static int key_cmp(void *key1, void *key2) {
-    int minlen;
-    char *p, *q;
-
-    p = ((struct CharBuf *)key1)->buf;
-    q = ((struct CharBuf *)key2)->buf;
-
-    if (((struct CharBuf *)key1)->len < ((struct CharBuf *)key2)->len) {
-	minlen = ((struct CharBuf *)key1)->len;
-    } else {
-	minlen = ((struct CharBuf *)key2)->len;
-    }
-
-    for (; minlen >= 0; --minlen) {
-	if (p[minlen] != q[minlen]) {
-	    return p[minlen] - q[minlen];
-	}
-    }
-
-    return 0;
+    return charbuf_revstrcmp(key1, key2);
 }
 
 void key_free(void *key) {
-    struct CharBuf *k;
-    k = (struct CharBuf *)key;
-
-    charbuf_free(k);
+    charbuf_free(key);
 }
 
 void key_delete(void *key) {
-    struct CharBuf *k;
-    k = (struct CharBuf *)key;
-
-    remove(k->buf);
+    remove(((struct CharBuf *)key)->buf);
     key_free(key);
 }
 
