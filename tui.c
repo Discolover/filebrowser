@@ -21,7 +21,10 @@
 #include "tree.h"
 #include "charbuf.h"
 
+#include "math.h"
+
 extern FILE *LOG;
+extern struct CharBuf TMPCHARBUF;
 
 static void draw_file(struct Panel *pnl), draw_directory(struct Panel *pnl);
 
@@ -40,9 +43,6 @@ static int (*sort[SORT_METHODS_NMEMB]) (const void *, const void *) = {
 static int key_cmp(void *key1, void *key2);
 static void key_free(void *key);
 
-char BUF[CB_MAX];
-struct CharBuf TMPCHARBUF = {.buf = BUF, .len = 0, .n = NMEMB(BUF)};
-
 struct Tree *MARKS;
 
 struct Entry {
@@ -60,6 +60,8 @@ struct Panel {
 
     struct Entry *entries;
     int n;
+
+    bool hide_dot_files;
 
     wchar_t search_pattern[WNAME_MAX];
     int *search, nsearch;
@@ -87,11 +89,10 @@ static int size_asc(const void *a, const void *b) {
 
     if (e1->st.st_size > e2->st.st_size) {
 	return 1;
-    } else if (e1->st.st_size == e2->st.st_size) {
-	return 0;
-    } else {
+    } else if (e1->st.st_size < e2->st.st_size) {
 	return -1;
     }
+    return 0;
 }
 
 static int size_desc(const void *a, const void *b) {
@@ -99,11 +100,10 @@ static int size_desc(const void *a, const void *b) {
 
     if (e1->st.st_size > e2->st.st_size) {
 	return -1;
-    } else if (e1->st.st_size == e2->st.st_size) {
-	return 0;
-    } else {
+    } else if (e1->st.st_size < e2->st.st_size) {
 	return 1;
     }
+    return 0;
 }
 
 int mvprint(int x, int y, char *mbs, int width, struct tb_cell meta) {
@@ -144,6 +144,8 @@ struct Panel *panel_new(float fx, int y, float fwidth, int height,
     struct Panel *pnl;
 
     pnl = ecalloc(1, sizeof(*pnl));
+
+    pnl->hide_dot_files = true;
 
     panel_set_path(pnl, path);
 
@@ -208,6 +210,11 @@ void panel_set_path(struct Panel *pnl, char *path) {
 	    if (!strcmp(dp->d_name, ".") || !strcmp(dp->d_name, "..")) {
 		continue;
 	    }
+
+	    if (pnl->hide_dot_files && dp->d_name[0] == '.') {
+		continue;
+	    }
+
 	    ++n;
 	}
 	if (errno) {
@@ -217,11 +224,17 @@ void panel_set_path(struct Panel *pnl, char *path) {
 	pnl->n = n;
 	pnl->entries = ecalloc(n, sizeof(*pnl->entries));
 
+	fprintf(LOG, "%d\n", pnl->hide_dot_files);
+
 	rewinddir(pnl->dir);
 	int i = 0;
 	errno = 0;
 	while (i < pnl->n && (dp = readdir(pnl->dir))) {
 	    if (!strcmp(dp->d_name, ".") || !strcmp(dp->d_name, "..")) {
+		continue;
+	    }
+
+	    if (pnl->hide_dot_files && dp->d_name[0] == '.') {
 		continue;
 	    }
 
@@ -249,6 +262,14 @@ void panel_set_path(struct Panel *pnl, char *path) {
     } else {
 	pnl->draw_fnc = draw_file;
     }
+}
+
+void panel_toggle_hide_dot_files(struct Panel *pnl) {
+    pnl->hide_dot_files = !pnl->hide_dot_files;
+}
+
+int panel_get_entries_number(struct Panel *pnl) {
+    return pnl->n;
 }
 
 void panel_cursor_up(struct Panel *pnl) {
@@ -304,6 +325,10 @@ char *panel_get_cursor_path(struct Panel *pnl, char *out) {
     strcpy(out + len, pnl->entries[pnl->cur].name->buf);
 
     return out;
+}
+
+void panel_get_cursor_stat(struct Panel *pnl, struct stat *out) {
+    memcpy(out, &pnl->entries[pnl->cur].st, sizeof(pnl->entries[pnl->cur].st));
 }
 
 char *panel_get_path(struct Panel *pnl) {
@@ -496,4 +521,67 @@ void panel_free(struct Panel *pnl) {
 void panel_finalize() {
     tree_foreach_free(MARKS, key_free);
     tree_free(MARKS);
+}
+
+char *mode_to_str(mode_t mode) {
+    static char str[MODE_STR_SZ];
+
+    snprintf(str, NMEMB(str), "%c%c%c%c%c%c%c%c%c%c",
+	     S_ISDIR(mode) ? 'd' : '-',
+	     S_IRUSR & mode ? 'r' : '-', S_IWUSR & mode ? 'w' : '-',
+	     S_IXUSR & mode ?
+	 	(S_ISUID & mode ? 's' : 'x') :
+	 	(S_ISUID & mode ? 'S' : '-'),
+	     S_IRGRP & mode ? 'r' : '-', S_IWGRP & mode ? 'w' : '-',
+	     S_IXGRP & mode ?
+	 	(S_ISGID & mode ? 's' : 'x') :
+	 	(S_ISGID & mode ? 'S' : '-'),
+	     S_IROTH & mode ? 'r' : '-', S_IWOTH & mode ? 'w' : '-',
+	     S_IXOTH & mode ?
+	 	(S_ISVTX & mode ? 't' : 'x') :
+	 	(S_ISVTX & mode ? 'T' : '-'));
+    return str;
+}
+
+struct Unit {
+    long long measure;
+    char prefix; // @todo: is it actually suffix?
+};
+
+#define KIB 1024LL
+
+struct Unit UNITS[] = {
+    {1LL, 'B'},
+    {KIB, 'K'},
+    {KIB * KIB, 'M'},
+    {KIB * KIB * KIB, 'G'},
+    {KIB * KIB * KIB * KIB, 'T'},
+    {KIB * KIB * KIB * KIB * KIB, 'P'},
+    {KIB * KIB * KIB * KIB * KIB * KIB, 'E'}
+};
+
+char *size_to_str(off_t sz) {
+    static char str[SIZE_STR_SZ];
+    double val;
+    int n;
+
+    for (size_t i = 0; i < NMEMB(UNITS) - 1; ++i) {
+	if (sz < UNITS[i + 1].measure) {
+	    val = (double)sz / UNITS[i].measure;
+
+	    // Only 3 symbos per a number, also
+	    // we don't want a traling decimal point.
+	    if (val >= 10) {
+	        val = round(val);
+		n = 0;
+	    } else {
+		n = 1;
+	    }
+
+	    snprintf(str, NMEMB(str), "%3.*f%c", n, val, UNITS[i].prefix);
+	    return str;
+	}
+    }
+
+    return "big!";
 }

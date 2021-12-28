@@ -1,7 +1,7 @@
 struct CharBuf {
     char *buf;
-    int n;
     int len;
+    int n;
 };
 
 #include <limits.h>
@@ -12,4 +12,6 @@ struct CharBuf *charbuf_new(char *s, int alloc);
 void charbuf_addch(struct CharBuf *cb, char ch);
 void charbuf_addstr(struct CharBuf *cb, char *s);
 int charbuf_revstrcmp(struct CharBuf *a, struct CharBuf *b);
+void charbuf_rstrip(struct CharBuf *cb);
+void charbuf_expand(struct CharBuf *cb, int n);
 void charbuf_free(struct CharBuf *cb);

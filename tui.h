@@ -1,9 +1,18 @@
 #include <wchar.h>
 
+#define BUF_SZ PATH_MAX
+
 #define WNAME_MAX (NAME_MAX / sizeof(wchar_t))
 #define WPATH_MAX (PATH_MAX / sizeof(wchar_t))
 #define NMEMB(ARRAY) (sizeof ARRAY / sizeof ARRAY[0])
 #define WCWIDTH(WC) ((WC) != '\t' ? wcwidth((WC)) : 8)
+
+#define MODE_STR_SZ sizeof("drwxrwxrwx")
+#define TIME_STR_SZ sizeof("Wed Jun 30 21:49:08 1993\n")
+#define SIZE_STR_SZ sizeof("1.2G")
+
+char *mode_to_str(mode_t perm);
+char *size_to_str(off_t sz);
 
 enum {
     SORT_ALPHA_ASC,
@@ -17,6 +26,8 @@ struct Panel;
 
 int mvprint(int x, int y, char *mbs, int width, struct tb_cell meta);
 
+void panel_get_cursor_stat(struct Panel *pnl, struct stat *out);
+
 struct Panel *panel_new(float x, int y, float fwidth, int height, char *path);
 void panel_draw(struct Panel *pnl);
 void panel_free(struct Panel *pnl);
@@ -24,6 +35,8 @@ void panel_resize(struct Panel *pnl);
 char *panel_get_cursor_path(struct Panel *pnl, char *out);
 void panel_set_path(struct Panel *pnl, char *path);
 char *panel_get_path(struct Panel *pnl);
+int panel_get_entries_number(struct Panel *pnl);
+void panel_toggle_hide_dot_files(struct Panel *pnl);
 void panel_set_cursor(struct Panel *pnl, int pos);
 int panel_search_next(struct Panel *pnl);
 int panel_search_prev(struct Panel *pnl);
