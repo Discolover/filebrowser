@@ -112,95 +112,58 @@ int get_sort_method() {
 }
 
 int main() {
-    char buf[PATH_MAX];
     wchar_t input[WNAME_MAX];
     struct Panel *left, *main, *right;
     bool quit = false;
     struct tb_event ev;
-
     struct stat st;
-
     struct passwd *pwd;
-
-    int len, n = 0;
+    int n = 0, x;
     struct tb_cell meta = {.fg = TB_DEFAULT, .bg = TB_DEFAULT};
+    struct CharBuf *tmp = &TMPCHARBUF, *idinfo;
 
     init();
 
     pwd = getpwuid(getuid());
+    n += strnlen(pwd->pw_name, LOGIN_NAME_MAX - 1);
+    gethostname(tmp->buf, tmp->n);
+    charbuf_set_len(tmp, strnlen(tmp->buf, HOST_NAME_MAX - 1));
+    n += tmp->len;
+    n += 3; // for '@', ':' and '\0'
+    idinfo = charbuf_new(NULL, n);
+    charbuf_addstr(idinfo, pwd->pw_name);
+    charbuf_addch(idinfo, '@');
+    charbuf_addstr(idinfo, tmp->buf);
+    charbuf_addch(idinfo, ':');
 
-    len = strnlen(pwd->pw_name, LOGIN_NAME_MAX - 1);
-    n += len;
-
-    n += 1; // for '@'
-
-    gethostname(TMPCHARBUF.buf, TMPCHARBUF.n);
-    len = strnlen(TMPCHARBUF.buf, HOST_NAME_MAX - 1);
-    TMPCHARBUF.buf[len] = '\0';
-    TMPCHARBUF.len = len;
-    n += TMPCHARBUF.len;
-
-    n += 1; // for ':'
-
-    n += PATH_MAX;
-
-    struct CharBuf *topinfo = charbuf_new(NULL, n);
-    struct CharBuf *fileinfo;
-    struct CharBuf *entries_number_info = charbuf_new(NULL, 0);
-
-    fileinfo = charbuf_new(NULL, MODE_STR_SZ + SIZE_STR_SZ + TIME_STR_SZ);
-
-    charbuf_addstr(topinfo, pwd->pw_name);
-    charbuf_addch(topinfo, '@');
-    charbuf_addstr(topinfo, TMPCHARBUF.buf);
-    charbuf_addch(topinfo, ':');
-
-    len = topinfo->len;
-
-    int h = tb_height() - 2;
-    int y = 1;
-
-    left = panel_new(0, y, 0.2, h, dirname(getcwd(buf, NMEMB(buf))));
-    main = panel_new(0.2, y, 0.5, h, getcwd(buf, NMEMB(buf)));
-    right = panel_new(0.7, y, 0.3, h, panel_get_cursor_path(main, buf));
+    left = panel_new(0, 0.2, dirname(getcwd(tmp->buf, tmp->n)));
+    main = panel_new(0.2, 0.5, getcwd(tmp->buf, tmp->n));
+    right = panel_new(0.7, 0.3, panel_get_cursor_path(main, tmp->buf));
 
     while (!quit) {
 	panel_draw(left);
 	panel_draw(main);
 	panel_draw(right);
 
-	topinfo->len = len;
-	topinfo->buf[len] = '\0';
+	x = mvprint(0, 0, idinfo->buf, tb_width(), meta);
+	panel_get_cursor_path(main, tmp->buf);
+	mvprint(x, 0, tmp->buf, tb_width() - x, meta);
 
-	panel_get_cursor_path(main, buf);
-	charbuf_addstr(topinfo, buf);
-
-	mvprint(0, 0, topinfo->buf, tb_width(), meta);
-
-	fileinfo->len = 0;
-	fileinfo->buf[0] = '\0';
-
+	charbuf_set_len(tmp, 0);
 	panel_get_cursor_stat(main, &st);
+	charbuf_addstr(tmp, mode_to_str(st.st_mode));
+	charbuf_addch(tmp, ' ');
+	charbuf_addstr(tmp, size_to_str(st.st_size));
+	charbuf_addch(tmp, ' ');
+	charbuf_addstr(tmp, ctime(&st.st_mtim.tv_sec));
+	charbuf_rstrip(tmp);
+	mvprint(0, tb_height() - 1, tmp->buf, tb_width(), meta);
 
-	charbuf_addstr(fileinfo, mode_to_str(st.st_mode));
-	charbuf_addch(fileinfo, ' ');
-	charbuf_addstr(fileinfo, size_to_str(st.st_size));
-	charbuf_addch(fileinfo, ' ');
-	charbuf_addstr(fileinfo, ctime(&st.st_mtim.tv_sec));
-	charbuf_rstrip(fileinfo);
-	mvprint(0, tb_height() - 1, fileinfo->buf, tb_width(), meta);
-
-	snprintf(TMPCHARBUF.buf, TMPCHARBUF.n, "%d/%d",
-		 panel_get_cursor(main) + 1,
+	snprintf(tmp->buf, tmp->n, "%d/%d", panel_get_cursor(main) + 1,
 		 panel_get_entries_number(main));
-	TMPCHARBUF.len = strnlen(TMPCHARBUF.buf, TMPCHARBUF.n - 1);
-	TMPCHARBUF.buf[TMPCHARBUF.len] = '\0';
-
-	mvprint(tb_width() - TMPCHARBUF.len, tb_height() - 1,
-		TMPCHARBUF.buf, TMPCHARBUF.len, meta);
-
-	//charbuf_expand(entries_number_info, TMPCHARBUF.len + 1);
-
+	charbuf_set_len(tmp, strnlen(tmp->buf, tmp->n - 1));
+	mvprint(tb_width() - tmp->len, tb_height() - 1, tmp->buf,
+		tmp->len, meta);
 
 	tb_present();
 
@@ -212,56 +175,46 @@ int main() {
 		break;
 	    case 'g':
 		panel_set_cursor(main, 0);
-		panel_get_cursor_path(main, buf);
-		panel_set_path(right, buf);
+		panel_set_path(right, panel_get_cursor_path(main, tmp->buf));
 		break;
 	    case 'G':
-		panel_set_cursor(main, -1);
-		panel_get_cursor_path(main, buf);
-		panel_set_path(right, buf);
+		panel_set_cursor(main, panel_get_entries_number(main) - 1);
+		panel_set_path(right, panel_get_cursor_path(main, tmp->buf));
 		break;
 	    case 'j':
 		panel_cursor_down(main);
-		panel_get_cursor_path(main, buf);
-		panel_set_path(right, buf);
+		panel_set_path(right, panel_get_cursor_path(main, tmp->buf));
 		break;
 	    case 'k':
 		panel_cursor_up(main);
-		panel_get_cursor_path(main, buf);
-		panel_set_path(right, buf);
+		panel_set_path(right, panel_get_cursor_path(main, tmp->buf));
 		break;
 	    case 'l':
 		panel_set_path(left, panel_get_path(main));
 		panel_set_path(main, panel_get_path(right));
-		panel_get_cursor_path(main, buf);
-		panel_set_path(right, buf);
+		panel_set_path(right, panel_get_cursor_path(main, tmp->buf));
 		break;
 	    case 'h':
 		panel_set_path(right, panel_get_path(main));
 		panel_set_path(main, panel_get_path(left));
-		strcpy(buf, panel_get_path(left));
-		panel_set_path(left, dirname(buf));
+		panel_set_path(left, dirname(panel_get_path(left)));
 		break;
 	    case '/':
 		get_input(input, NMEMB(input));
 		panel_set_search_pattern(main, input);
 		panel_set_cursor(main, panel_search_next(main));
-		panel_get_cursor_path(main, buf);
-		panel_set_path(right, buf);
+		panel_set_path(right, panel_get_cursor_path(main, tmp->buf));
 		break;
 	    case 'n':
 		panel_set_cursor(main, panel_search_next(main));
-		panel_get_cursor_path(main, buf);
-		panel_set_path(right, buf);
+		panel_set_path(right, panel_get_cursor_path(main, tmp->buf));
 		break;
 	    case 'N':
 		panel_set_cursor(main, panel_search_prev(main));
-		panel_get_cursor_path(main, buf);
-		panel_set_path(right, buf);
+		panel_set_path(right, panel_get_cursor_path(main, tmp->buf));
 		break;
 	    case 'z':
-		// trick to center relative to the cursor(current entry)
-		panel_set_cursor(main, panel_get_cursor(main));
+		panel_update_top(main);
 		break;
 	    case 's':
 		int sm = get_sort_method();
@@ -269,42 +222,24 @@ int main() {
 		    panel_set_sort_method(left, sm);
 		    panel_set_sort_method(main, sm);
 		    panel_set_sort_method(right, sm);
-
-		    strcpy(buf, panel_get_path(left));
-		    panel_set_path(left, buf);
-
-		    strcpy(buf, panel_get_path(main));
-		    panel_set_path(main, buf);
-
-		    strcpy(buf, panel_get_path(right));
-		    panel_set_path(right, buf);
+		    panel_set_path(left, panel_get_path(left));
+		    panel_set_path(main, panel_get_path(main));
+		    panel_set_path(right, panel_get_path(right));
 		}
 		break;
 	    case 'D':
 		panel_delete_marked();
-		// redraw directories
-		strcpy(buf, panel_get_path(left));
-		panel_set_path(left, buf);
-
-		strcpy(buf, panel_get_path(main));
-		panel_set_path(main, buf);
-
-		panel_get_cursor_path(main, buf);
-		panel_set_path(right, buf);
+		panel_set_path(left, panel_get_path(left));
+		panel_set_path(main, panel_get_path(main));
+		panel_set_path(right, panel_get_path(right));
 		break;
 	    case '.':
 		panel_toggle_hide_dot_files(left);
 		panel_toggle_hide_dot_files(main);
 		panel_toggle_hide_dot_files(right);
-
-		strcpy(buf, panel_get_path(left));
-		panel_set_path(left, buf);
-
-		strcpy(buf, panel_get_path(main));
-		panel_set_path(main, buf);
-
-		strcpy(buf, panel_get_path(right));
-		panel_set_path(right, buf);
+		panel_set_path(left, panel_get_path(left));
+		panel_set_path(main, panel_get_path(main));
+		panel_set_path(right, panel_get_path(right));
 		break;
 	    }
 	    switch (ev.key) {
@@ -321,6 +256,8 @@ int main() {
 	}
 	tb_clear();
     }
+
+    charbuf_free(idinfo);
 
     panel_free(left);
     panel_free(main);

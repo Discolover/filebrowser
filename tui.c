@@ -23,6 +23,11 @@
 
 #include "math.h"
 
+enum {
+    PANEL_VERTICAL_MARGINS = 2,
+    PANEL_Y_POSITION = 1
+};
+
 extern FILE *LOG;
 extern struct CharBuf TMPCHARBUF;
 
@@ -48,6 +53,12 @@ struct Tree *MARKS;
 struct Entry {
     struct CharBuf *name;
     struct stat st;
+};
+
+struct PanelCommon {
+    wchar_t search_pattern[WNAME_MAX];
+    int sort_method;
+    bool hide_dot_files;
 };
 
 struct Panel {
@@ -79,9 +90,7 @@ static int alpha_asc(const void *a, const void *b) {
 }
 
 static int alpha_desc(const void *a, const void *b) {
-    const struct Entry *e1 = a, *e2 = b;
-
-    return strcmp(e2->name->buf, e1->name->buf);
+    return -1 * alpha_asc(a, b);
 }
 
 static int size_asc(const void *a, const void *b) {
@@ -96,14 +105,7 @@ static int size_asc(const void *a, const void *b) {
 }
 
 static int size_desc(const void *a, const void *b) {
-    const struct Entry *e1 = a, *e2 = b;
-
-    if (e1->st.st_size > e2->st.st_size) {
-	return -1;
-    } else if (e1->st.st_size < e2->st.st_size) {
-	return 1;
-    }
-    return 0;
+    return -1 * size_asc(a, b);
 }
 
 int mvprint(int x, int y, char *mbs, int width, struct tb_cell meta) {
@@ -111,7 +113,7 @@ int mvprint(int x, int y, char *mbs, int width, struct tb_cell meta) {
     int n, len, w;
 
     mbtowc(NULL, NULL, 0);
-    len = strlen(mbs);
+    len = strlen(mbs); // @todo: print CharBuf instead
 
     while (len > 0) {
 	n = mbtowc(&wc, mbs, len);
@@ -132,15 +134,14 @@ int mvprint(int x, int y, char *mbs, int width, struct tb_cell meta) {
 	len -= n;
     }
 
-    return 0;
+    return x;
 }
 
 void panel_init() {
     MARKS = tree_new(key_cmp);
 }
 
-struct Panel *panel_new(float fx, int y, float fwidth, int height,
-			char *path) {
+struct Panel *panel_new(float fx, float fwidth, char *path) {
     struct Panel *pnl;
 
     pnl = ecalloc(1, sizeof(*pnl));
@@ -150,10 +151,8 @@ struct Panel *panel_new(float fx, int y, float fwidth, int height,
     panel_set_path(pnl, path);
 
     pnl->fx = fx;
-    pnl->y = y;
     pnl->fwidth = fwidth;
     pnl->sort_method = SORT_ALPHA_ASC;
-    //pnl->height = height;
 
     panel_resize(pnl);
 
@@ -161,6 +160,7 @@ struct Panel *panel_new(float fx, int y, float fwidth, int height,
 }
 
 void panel_set_sort_method(struct Panel *pnl, int sort_method) {
+    assert(sort_method > -1 && sort_method < SORT_METHODS_NMEMB);
     pnl->sort_method = sort_method;
 }
 
@@ -190,11 +190,13 @@ void panel_set_path(struct Panel *pnl, char *path) {
     pnl->top = 0;
     pnl->nsearch = 0;
 
-    if (pnl->path) {
-	charbuf_free(pnl->path);
-    }
+    struct CharBuf *old = pnl->path;
 
     pnl->path = charbuf_new(path, CB_STR_NMEMB);
+
+    if (old) {
+	charbuf_free(old);
+    }
 
     struct stat st;
     lstat(pnl->path->buf, &st);
@@ -224,10 +226,9 @@ void panel_set_path(struct Panel *pnl, char *path) {
 	pnl->n = n;
 	pnl->entries = ecalloc(n, sizeof(*pnl->entries));
 
-	fprintf(LOG, "%d\n", pnl->hide_dot_files);
-
 	rewinddir(pnl->dir);
 	int i = 0;
+	struct CharBuf *entry_path = &TMPCHARBUF;
 	errno = 0;
 	while (i < pnl->n && (dp = readdir(pnl->dir))) {
 	    if (!strcmp(dp->d_name, ".") || !strcmp(dp->d_name, "..")) {
@@ -240,13 +241,12 @@ void panel_set_path(struct Panel *pnl, char *path) {
 
 	    pnl->entries[i].name = charbuf_new(dp->d_name, CB_STR_NMEMB);
 
-	    TMPCHARBUF.len = 0;
-	    TMPCHARBUF.buf[0] = '\0';
-	    charbuf_addstr(&TMPCHARBUF, pnl->path->buf);
-	    charbuf_addch(&TMPCHARBUF, '/');
-	    charbuf_addstr(&TMPCHARBUF, pnl->entries[i].name->buf);
+	    charbuf_set_len(entry_path, 0);
+	    charbuf_addstr(entry_path, pnl->path->buf);
+	    charbuf_addch(entry_path, '/');
+	    charbuf_addstr(entry_path, pnl->entries[i].name->buf);
 
-	    lstat(TMPCHARBUF.buf, &pnl->entries[i].st);
+	    lstat(entry_path->buf, &pnl->entries[i].st);
 
 	    ++i;
 	}
@@ -292,12 +292,14 @@ void panel_cursor_down(struct Panel *pnl) {
 }
 
 void panel_set_cursor(struct Panel *pnl, int pos) {
-    if (pos < 0 || pos >= pnl->n) {
-	pos = pnl->n - 1;
-    }
+    assert(pos >= 0 && pos < pnl->n);
 
     pnl->cur = pos;
 
+    panel_update_top(pnl);
+}
+
+void panel_update_top(struct Panel *pnl) {
     pnl->top = pnl->cur - pnl->height / 2;
 
     if (pnl->top + pnl->height > pnl->n) {
@@ -313,7 +315,6 @@ int panel_get_cursor(struct Panel *pnl) {
     return pnl->cur;
 }
 
-// @todo: strcpy -> strncpy
 char *panel_get_cursor_path(struct Panel *pnl, char *out) {
     size_t len;
 
@@ -322,7 +323,8 @@ char *panel_get_cursor_path(struct Panel *pnl, char *out) {
     out[len] = '/';
     ++len;
     out[len] = '\0';
-    strcpy(out + len, pnl->entries[pnl->cur].name->buf);
+    memcpy(out + len, pnl->entries[pnl->cur].name->buf,
+	   pnl->entries[pnl->cur].name->len + 1);
 
     return out;
 }
@@ -343,13 +345,14 @@ static void draw_directory(struct Panel *pnl) {
     int top = pnl->top;
     struct tb_cell meta = {.bg = TB_DEFAULT};
     uint16_t mark;
-    int l;
+    int len;
 
-    TMPCHARBUF.len = 0;
-    TMPCHARBUF.buf[0] = '\0';
-    charbuf_addstr(&TMPCHARBUF, pnl->path->buf);
-    charbuf_addch(&TMPCHARBUF, '/');
-    l = TMPCHARBUF.len;
+    struct CharBuf *entry_path = &TMPCHARBUF;
+
+    charbuf_set_len(entry_path, 0);
+    charbuf_addstr(entry_path, pnl->path->buf);
+    charbuf_addch(entry_path, '/');
+    len = entry_path->len;
 
     for (int y = 0; y < pnl->n && y < pnl->height; ++y) {
 	if (y + top == pnl->cur) {
@@ -358,11 +361,10 @@ static void draw_directory(struct Panel *pnl) {
 	    meta.fg = TB_DEFAULT;
 	}
 
-	TMPCHARBUF.len = l;
-	TMPCHARBUF.buf[l] = '\0';
-	charbuf_addstr(&TMPCHARBUF, pnl->entries[y + top].name->buf);
+	charbuf_set_len(entry_path, len);
+	charbuf_addstr(entry_path, pnl->entries[y + top].name->buf);
 
-	if (tree_exists(MARKS, &TMPCHARBUF)) {
+	if (tree_exists(MARKS, entry_path)) {
 	    mark = TB_MAGENTA;
 	} else {
 	    mark = TB_DEFAULT;
@@ -464,21 +466,21 @@ void panel_delete_marked() {
 }
 
 void panel_mark_cursor(struct Panel *pnl) {
-    struct CharBuf *key;
+    struct CharBuf *entry_path;
     int n;
 
     n = pnl->path->len + 1 + pnl->entries[pnl->cur].name->len + 1;
-    key = charbuf_new(NULL, n);
+    entry_path = charbuf_new(NULL, n);
 
-    charbuf_addstr(key, pnl->path->buf);
-    charbuf_addch(key, '/');
-    charbuf_addstr(key, pnl->entries[pnl->cur].name->buf);
+    charbuf_addstr(entry_path, pnl->path->buf);
+    charbuf_addch(entry_path, '/');
+    charbuf_addstr(entry_path, pnl->entries[pnl->cur].name->buf);
 
-    if (!tree_exists(MARKS, key)) {
-	tree_insert(MARKS, key);
+    if (!tree_exists(MARKS, entry_path)) {
+	tree_insert(MARKS, entry_path);
     } else {
-	tree_delete(MARKS, key);
-	charbuf_free(key);
+	tree_delete(MARKS, entry_path);
+	charbuf_free(entry_path);
     }
 }
 
@@ -494,11 +496,10 @@ void panel_resize(struct Panel *pnl) {
     pnl->width = (float)w * pnl->fwidth;
     pnl->x = (float)w * pnl->fx;
 
-    //eprintf("%s", pnl->width);
-    pnl->y = 1;
-    pnl->height = h - 2;
+    pnl->height = h - PANEL_VERTICAL_MARGINS;
+    pnl->y = PANEL_Y_POSITION;
 
-    panel_set_cursor(pnl, pnl->cur); // required to update pnl->top
+    panel_update_top(pnl);
 }
 
 void panel_free(struct Panel *pnl) {
@@ -524,7 +525,7 @@ void panel_finalize() {
 }
 
 char *mode_to_str(mode_t mode) {
-    static char str[MODE_STR_SZ];
+    static char str[sizeof(SAMPLE_MODE_STR)];
 
     snprintf(str, NMEMB(str), "%c%c%c%c%c%c%c%c%c%c",
 	     S_ISDIR(mode) ? 'd' : '-',
@@ -561,7 +562,7 @@ struct Unit UNITS[] = {
 };
 
 char *size_to_str(off_t sz) {
-    static char str[SIZE_STR_SZ];
+    static char str[sizeof(SAMPLE_SIZE_STR)];
     double val;
     int n;
 

@@ -31,6 +31,12 @@ struct CharBuf *charbuf_new(char *s, int alloc) {
     return cb;
 }
 
+void charbuf_set_len(struct CharBuf *cb, int len) {
+    assert(len < cb->n);
+
+    cb->len = len;
+    cb->buf[len] = '\0';
+}
 
 struct CharBuf *charbuf_new_v2(char *s, int len, int n) {
     struct CharBuf *cb;
