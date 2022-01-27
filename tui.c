@@ -108,12 +108,15 @@ static int size_desc(const void *a, const void *b) {
     return -1 * size_asc(a, b);
 }
 
-int mvprint(int x, int y, char *mbs, int width, struct tb_cell meta) {
+int mvprint(int x, int y, struct CharBuf *cb, int width, struct tb_cell meta) {
+    char *mbs;
     wchar_t wc;
     int n, len, w;
 
     mbtowc(NULL, NULL, 0);
-    len = strlen(mbs); // @todo: print CharBuf instead
+
+    mbs = cb->buf;
+    len = cb->len;
 
     while (len > 0) {
 	n = mbtowc(&wc, mbs, len);
@@ -141,6 +144,7 @@ void panel_init() {
     MARKS = tree_new(key_cmp);
 }
 
+// @todo: AT LEAST TRY TO change `char` to `struct CharBuf`
 struct Panel *panel_new(float fx, float fwidth, char *path) {
     struct Panel *pnl;
 
@@ -163,6 +167,7 @@ void panel_set_sort_method(struct Panel *pnl, int sort_method) {
     assert(sort_method > -1 && sort_method < SORT_METHODS_NMEMB);
     pnl->sort_method = sort_method;
 }
+
 
 void panel_set_path(struct Panel *pnl, char *path) {
     for (int i = 0; i < pnl->n; ++i) {
@@ -315,6 +320,7 @@ int panel_get_cursor(struct Panel *pnl) {
     return pnl->cur;
 }
 
+// @todo: change `char` to `struct CharBuf`
 char *panel_get_cursor_path(struct Panel *pnl, char *out) {
     size_t len;
 
@@ -372,7 +378,7 @@ static void draw_directory(struct Panel *pnl) {
 
 	tb_change_cell(pnl->x, pnl->y + y, ' ', TB_DEFAULT, mark);
 
-	mvprint(pnl->x + 1, pnl->y + y, pnl->entries[y + top].name->buf,
+	mvprint(pnl->x + 1, pnl->y + y, pnl->entries[y + top].name,
 		pnl->width, meta);
     }
 }
@@ -515,6 +521,7 @@ void panel_free(struct Panel *pnl) {
     for (i = 0; i < pnl->n; ++i) {
 	charbuf_free(pnl->entries[i].name);
     }
+    charbuf_free(pnl->path);
     free(pnl->entries);
     free(pnl);
 }
@@ -530,8 +537,7 @@ char *mode_to_str(mode_t mode) {
     snprintf(str, NMEMB(str), "%c%c%c%c%c%c%c%c%c%c",
 	     S_ISDIR(mode) ? 'd' : '-',
 	     S_IRUSR & mode ? 'r' : '-', S_IWUSR & mode ? 'w' : '-',
-	     S_IXUSR & mode ?
-	 	(S_ISUID & mode ? 's' : 'x') :
+	     S_IXUSR & mode ?  (S_ISUID & mode ? 's' : 'x') :
 	 	(S_ISUID & mode ? 'S' : '-'),
 	     S_IRGRP & mode ? 'r' : '-', S_IWGRP & mode ? 'w' : '-',
 	     S_IXGRP & mode ?
@@ -546,7 +552,7 @@ char *mode_to_str(mode_t mode) {
 
 struct Unit {
     long long measure;
-    char prefix; // @todo: is it actually suffix?
+    char prefix;
 };
 
 #define KIB 1024LL
@@ -584,5 +590,5 @@ char *size_to_str(off_t sz) {
 	}
     }
 
-    return "big!";
+    return "huge";
 }

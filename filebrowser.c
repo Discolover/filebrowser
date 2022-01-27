@@ -21,29 +21,11 @@ FILE *LOG;
 char BUF[BUF_SZ];
 struct CharBuf TMPCHARBUF = {.buf = BUF, .len = 0, .n = NMEMB(BUF)};
 
-int MAX_VALUES[] = {
-    PATH_MAX, NAME_MAX, HOST_NAME_MAX, LOGIN_NAME_MAX
-};
-
-char *sort_method_to_str[SORT_METHODS_NMEMB] = {
-    "SORT_ALPHA_ASC",
-    "SORT_ALPHA_DESC",
-    "SORT_SIZE_ASC",
-    "SORT_SIZE_DESC"
-};
-
 void init() {
     LOG = fopen("log", "w");
     setlocale(LC_ALL, "");
     tb_init();
     panel_init();
-
-    for (size_t i = 0; i < NMEMB(MAX_VALUES); ++i) {
-	fprintf(LOG, "%d\n", MAX_VALUES[i]);
-	if (BUF_SZ < MAX_VALUES[i]) {
-	    eprintf("BUG");
-	}
-    }
 }
 
 void finalize() {
@@ -145,9 +127,10 @@ int main() {
 	panel_draw(main);
 	panel_draw(right);
 
-	x = mvprint(0, 0, idinfo->buf, tb_width(), meta);
+	x = mvprint(0, 0, idinfo, tb_width(), meta);
 	panel_get_cursor_path(main, tmp->buf);
-	mvprint(x, 0, tmp->buf, tb_width() - x, meta);
+	charbuf_set_len(tmp, strnlen(tmp->buf, PATH_MAX - 1));
+	mvprint(x, 0, tmp, tb_width() - x, meta);
 
 	charbuf_set_len(tmp, 0);
 	panel_get_cursor_stat(main, &st);
@@ -157,12 +140,12 @@ int main() {
 	charbuf_addch(tmp, ' ');
 	charbuf_addstr(tmp, ctime(&st.st_mtim.tv_sec));
 	charbuf_rstrip(tmp);
-	mvprint(0, tb_height() - 1, tmp->buf, tb_width(), meta);
+	mvprint(0, tb_height() - 1, tmp, tb_width(), meta);
 
 	snprintf(tmp->buf, tmp->n, "%d/%d", panel_get_cursor(main) + 1,
 		 panel_get_entries_number(main));
 	charbuf_set_len(tmp, strnlen(tmp->buf, tmp->n - 1));
-	mvprint(tb_width() - tmp->len, tb_height() - 1, tmp->buf,
+	mvprint(tb_width() - tmp->len, tb_height() - 1, tmp,
 		tmp->len, meta);
 
 	tb_present();
@@ -218,14 +201,15 @@ int main() {
 		break;
 	    case 's':
 		int sm = get_sort_method();
-		if (sm > -1) {
-		    panel_set_sort_method(left, sm);
-		    panel_set_sort_method(main, sm);
-		    panel_set_sort_method(right, sm);
-		    panel_set_path(left, panel_get_path(left));
-		    panel_set_path(main, panel_get_path(main));
-		    panel_set_path(right, panel_get_path(right));
+		if (sm < 0) {
+		    break;
 		}
+		panel_set_sort_method(left, sm);
+		panel_set_sort_method(main, sm);
+		panel_set_sort_method(right, sm);
+		panel_set_path(left, panel_get_path(left));
+		panel_set_path(main, panel_get_path(main));
+		panel_set_path(right, panel_get_path(right));
 		break;
 	    case 'D':
 		panel_delete_marked();

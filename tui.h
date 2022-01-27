@@ -1,5 +1,9 @@
 #include <wchar.h>
 
+/*
+ * BUF_SZ must be equal to MAX(PATH_MAX, NAME_MAX, HOST_NAME_MAX,
+ * LOGIN_NAME_MAX) number of bytes.
+*/
 #define BUF_SZ PATH_MAX
 
 #define WNAME_MAX (NAME_MAX / sizeof(wchar_t))
@@ -24,7 +28,9 @@ enum {
 
 struct Panel;
 
-int mvprint(int x, int y, char *mbs, int width, struct tb_cell meta);
+struct CharBuf;
+
+int mvprint(int x, int y, struct CharBuf *cb, int width, struct tb_cell meta);
 
 void panel_get_cursor_stat(struct Panel *pnl, struct stat *out);
 
