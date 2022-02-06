@@ -55,15 +55,21 @@ void get_input(wchar_t *buf, size_t n) {
 	    break;
 	}
 	if (ev.key == TB_KEY_BACKSPACE || ev.key == TB_KEY_BACKSPACE2) {
-	    if (p > buf)
-		--p;
-	    if (x > 1)
-		--x;
-	    // @todo: this doesn't work for 2 cell width symbols(e. g. emojis)
-	    tb_change_cell(x, y, L' ', TB_DEFAULT, TB_DEFAULT);
+	    if (p <= buf) {
+		break;
+	    }
+	    --p;
+
+	    int w = WCWIDTH(*p);
+	    x -= w;
+
+	    for (int i = 0; i < w; ++i) {
+		tb_change_cell(x + i, y, L' ', TB_DEFAULT, TB_DEFAULT);
+	    }
 	} else {
 	    *p++ = ev.ch;
-	    tb_change_cell(x++, y, ev.ch, TB_DEFAULT, TB_DEFAULT);
+	    tb_change_cell(x, y, ev.ch, TB_DEFAULT, TB_DEFAULT);
+	    x += WCWIDTH(ev.ch);
 	}
 	tb_present();
     }
