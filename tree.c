@@ -60,6 +60,7 @@ void tree_insert(struct Tree *t, void *key) {
     }
 }
 
+// @todo: should also call a custom free function or something...
 void tree_delete(struct Tree *t, void *key) {
     struct Node *i, *p;
     int res;

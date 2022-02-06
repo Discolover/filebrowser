@@ -59,6 +59,7 @@ void get_input(wchar_t *buf, size_t n) {
 		--p;
 	    if (x > 1)
 		--x;
+	    // @todo: this doesn't work for 2 cell width symbols(e. g. emojis)
 	    tb_change_cell(x, y, L' ', TB_DEFAULT, TB_DEFAULT);
 	} else {
 	    *p++ = ev.ch;
@@ -120,7 +121,7 @@ int main() {
 
     left = panel_new(0, 0.2, dirname(getcwd(tmp->buf, tmp->n)));
     main = panel_new(0.2, 0.5, getcwd(tmp->buf, tmp->n));
-    right = panel_new(0.7, 0.3, panel_get_cursor_path(main, tmp->buf));
+    right = panel_new(0.7, 0.3, panel_get_cursor_path(main, tmp));
 
     while (!quit) {
 	panel_draw(left);
@@ -128,8 +129,7 @@ int main() {
 	panel_draw(right);
 
 	x = mvprint(0, 0, idinfo, tb_width(), meta);
-	panel_get_cursor_path(main, tmp->buf);
-	charbuf_set_len(tmp, strnlen(tmp->buf, PATH_MAX - 1));
+	panel_get_cursor_path(main, tmp);
 	mvprint(x, 0, tmp, tb_width() - x, meta);
 
 	charbuf_set_len(tmp, 0);
@@ -158,24 +158,24 @@ int main() {
 		break;
 	    case 'g':
 		panel_set_cursor(main, 0);
-		panel_set_path(right, panel_get_cursor_path(main, tmp->buf));
+		panel_set_path(right, panel_get_cursor_path(main, tmp));
 		break;
 	    case 'G':
 		panel_set_cursor(main, panel_get_entries_number(main) - 1);
-		panel_set_path(right, panel_get_cursor_path(main, tmp->buf));
+		panel_set_path(right, panel_get_cursor_path(main, tmp));
 		break;
 	    case 'j':
 		panel_cursor_down(main);
-		panel_set_path(right, panel_get_cursor_path(main, tmp->buf));
+		panel_set_path(right, panel_get_cursor_path(main, tmp));
 		break;
 	    case 'k':
 		panel_cursor_up(main);
-		panel_set_path(right, panel_get_cursor_path(main, tmp->buf));
+		panel_set_path(right, panel_get_cursor_path(main, tmp));
 		break;
 	    case 'l':
 		panel_set_path(left, panel_get_path(main));
 		panel_set_path(main, panel_get_path(right));
-		panel_set_path(right, panel_get_cursor_path(main, tmp->buf));
+		panel_set_path(right, panel_get_cursor_path(main, tmp));
 		break;
 	    case 'h':
 		panel_set_path(right, panel_get_path(main));
@@ -186,15 +186,15 @@ int main() {
 		get_input(input, NMEMB(input));
 		panel_set_search_pattern(main, input);
 		panel_set_cursor(main, panel_search_next(main));
-		panel_set_path(right, panel_get_cursor_path(main, tmp->buf));
+		panel_set_path(right, panel_get_cursor_path(main, tmp));
 		break;
 	    case 'n':
 		panel_set_cursor(main, panel_search_next(main));
-		panel_set_path(right, panel_get_cursor_path(main, tmp->buf));
+		panel_set_path(right, panel_get_cursor_path(main, tmp));
 		break;
 	    case 'N':
 		panel_set_cursor(main, panel_search_prev(main));
-		panel_set_path(right, panel_get_cursor_path(main, tmp->buf));
+		panel_set_path(right, panel_get_cursor_path(main, tmp));
 		break;
 	    case 'z':
 		panel_update_top(main);

@@ -86,7 +86,7 @@ struct Panel {
 static int alpha_asc(const void *a, const void *b) {
     const struct Entry *e1 = a, *e2 = b;
 
-    return strcmp(e1->name->buf, e2->name->buf);
+    return strcoll(e1->name->buf, e2->name->buf);
 }
 
 static int alpha_desc(const void *a, const void *b) {
@@ -144,7 +144,6 @@ void panel_init() {
     MARKS = tree_new(key_cmp);
 }
 
-// @todo: AT LEAST TRY TO change `char` to `struct CharBuf`
 struct Panel *panel_new(float fx, float fwidth, char *path) {
     struct Panel *pnl;
 
@@ -320,19 +319,13 @@ int panel_get_cursor(struct Panel *pnl) {
     return pnl->cur;
 }
 
-// @todo: change `char` to `struct CharBuf`
-char *panel_get_cursor_path(struct Panel *pnl, char *out) {
-    size_t len;
+char *panel_get_cursor_path(struct Panel *pnl, struct CharBuf *out) {
+    charbuf_set_len(out, 0);
+    charbuf_addstr(out, pnl->path->buf);
+    charbuf_addch(out, '/');
+    charbuf_addstr(out, pnl->entries[pnl->cur].name->buf);
 
-    len = pnl->path->len;
-    memcpy(out, pnl->path->buf, len);
-    out[len] = '/';
-    ++len;
-    out[len] = '\0';
-    memcpy(out + len, pnl->entries[pnl->cur].name->buf,
-	   pnl->entries[pnl->cur].name->len + 1);
-
-    return out;
+    return out->buf;
 }
 
 void panel_get_cursor_stat(struct Panel *pnl, struct stat *out) {

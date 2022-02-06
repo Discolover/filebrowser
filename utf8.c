@@ -28,7 +28,7 @@ static int decode_utf8byte(FILE *f, uint32_t *rune, int *cnt) {
     return -1;
 }
 
-int fget_wc(FILE *f, uint32_t *wc) {
+int fget_rune(FILE *f, uint32_t *rune) {
     int nbytes_read = 0, len;
     int res = 0;
 

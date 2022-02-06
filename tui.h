@@ -38,7 +38,7 @@ struct Panel *panel_new(float x, float fwidth, char *path);
 void panel_draw(struct Panel *pnl);
 void panel_free(struct Panel *pnl);
 void panel_resize(struct Panel *pnl);
-char *panel_get_cursor_path(struct Panel *pnl, char *out);
+char *panel_get_cursor_path(struct Panel *pnl, struct CharBuf *out);
 void panel_set_path(struct Panel *pnl, char *path);
 char *panel_get_path(struct Panel *pnl);
 int panel_get_entries_number(struct Panel *pnl);
